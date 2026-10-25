@@ -68,15 +68,17 @@ Keep traffic and carbon on the same clock. The trace's time zone is not document
 ## Results (synthetic traffic, India grid, flexible functions shift to Sweden, 10 seeds, mean ± std)
 Emissions are charged on the true carbon curve and include container boot energy. `vs fixed` is paired per seed against fixed 10-minute keep-alive.
 
-| Policy | Cold starts % | Emissions vs fixed % |
-|---|---|---|
-| Fixed keep-alive 10 min | 7.3 ± 1.4 | 0 |
-| Histogram (Azure-style) | 1.3 ± 0.3 | +79 ± 11 |
-| Predictive, carbon off | 5.4 ± 0.7 | -16.6 ± 3.0 |
-| GreenWarm keep-alive only | 5.6 ± 0.7 | -18.5 ± 3.2 |
-| Predictive + region shift | 5.4 ± 0.7 | -64.0 ± 1.4 |
-| Predictive + delay calls (14 min avg wait) | 5.3 ± 0.6 | -21.5 ± 2.9 |
-| GreenWarm full (keep-alive + shift + delay) | 5.0 ± 0.7 | -64.4 ± 1.4 |
+| Policy | Cold starts, every call % | Cold starts, per function % | Emissions vs fixed % |
+|---|---|---|---|
+| Fixed keep-alive 10 min | 7.3 ± 1.4 | 19.0 ± 2.1 | 0 |
+| Histogram (Azure-style) | 1.3 ± 0.3 | 3.6 ± 0.5 | +79 ± 11 |
+| Predictive, carbon off | 5.4 ± 0.7 | 13.4 ± 1.9 | -16.6 ± 3.0 |
+| GreenWarm keep-alive only | 5.6 ± 0.7 | 13.8 ± 1.6 | -18.5 ± 3.2 |
+| Predictive + region shift | 5.4 ± 0.7 | 13.4 ± 1.9 | -64.0 ± 1.4 |
+| Predictive + delay calls (14 min avg wait) | 5.3 ± 0.6 | 13.0 ± 1.7 | -21.5 ± 2.9 |
+| GreenWarm full (keep-alive + shift + delay) | 5.0 ± 0.7 | 12.5 ± 1.6 | -64.4 ± 1.4 |
+
+**Two cold-start measures.** "Every call" counts each call once, so on a real trace one very busy function can hold almost all calls and hide that quiet functions go cold most of the time (on a first run on the real Azure trace, even "no pre-warming" showed 0.0%). "Per function" gives every function equal weight and is the one to quote; the per-function table (`results/per_function.csv`, also printed) shows each function separately. Functions that are busy every minute behave identically under every policy, so the differences come from the quiet ones.
 
 What this says, honestly:
 * **Prediction is the main win over fixed keep-alive**: fewer cold starts and about 17% less carbon, simply by not holding idle containers.
@@ -107,5 +109,11 @@ Be cautious. Carbon-aware keep-alive and placement for serverless is an active r
 
 ## Dataset notes (Azure Functions 2019 trace)
 Cite: Shahrad et al., "Serverless in the Wild", USENIX ATC 2020 (data is CC-BY). Only the invocation files are required. The memory files (`app_memory_percentiles.anon.d01..d12`, column `AverageAllocatedMb`) are used if present; they are per application and measure committed (allocated) memory. The duration files are not used: their times exclude cold starts, and execution energy is the same for every policy. Minute counts are recorded after execution, so they are completion times, and the trace samples applications randomly at an unspecified rate. Azure makes warm-up decisions per application, while this simulator keeps one container per function.
-#   F c c _ p r o j e c t  
- 
+
+
+## India carbon curve from Grid-India data (data/india_july.csv)
+Built by `prepare_india_carbon.py` from the July 2022 and July 2023 workbooks of "Electricity Demand, Solar and Wind Generation Data of India" (Mukherjee, Kalita, Kumar, Mendeley Data V2, doi:10.17632/y58jknpgs8.2; check the licence on that page). It uses six all-India signals in MW (thermal, hydro, gas, nuclear, wind, solar) with IPCC AR5 lifecycle emission factors (coal 820, gas 490, hydro 24, nuclear 12, wind 11, solar 48 gCO2eq/kWh). Each year is averaged by hour of day and the two years are averaged with equal weight. Result: mean 572 g/kWh, lowest 510 at 13:00 IST, highest 609 at 05:00 IST (swing about 17% of the mean); the two years agree within about 3% at every hour. Timestamps are IST (solar peaks at noon). Limits: all-India, not a regional grid; only six sources (no small hydro, biomass or rooftop solar); generic factors; night-time solar readings below zero are clipped to 0, and 153 of 276,768 samples with sensor glitches are dropped. `india_july_utc.csv` is the same curve on a UTC clock.
+
+With this curve on synthetic traffic (10 seeds): carbon-aware keep-alive saves 2.1% ± 1.1% over the same predictor with carbon off, delaying flexible calls about 4%, and region shift to the illustrative Sweden curve about 56% (full results in `results_india_curve/`).
+
+Use it: `python run_experiment.py --carbon-csv india=data/india_july.csv --shift-to sweden`. Target regions (Sweden, Germany, California) are still illustrative curves.
